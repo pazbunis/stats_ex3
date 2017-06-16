@@ -64,7 +64,6 @@ best_voxel_mse = -1
 best_voxel_betahat = -1
 for (voxel in 1:15) {
   fit=glmnet(X_train,y_train[,voxel])
-  
   y_test_hat=predict(fit, X_test)
   
   mse_per_lambda=colMeans((y_test_hat-y_test[,voxel])^2)
