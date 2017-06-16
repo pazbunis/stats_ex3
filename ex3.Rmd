@@ -8,10 +8,14 @@ output:
 
 ```{r}
 install.packages('glmnet')
+install.packages('Hmisc')
 ```
 
 ```{r}
 library('glmnet')
+library('Hmisc')
+load('wavpyr.RData')
+load('stim.RData')
 ```
 
 ```{r}
@@ -61,8 +65,11 @@ y_test  <- y[-sample, ]
 ```{r}
 
 y_hat = matrix(ncol=15, nrow=nrow(val_feat))
+y_hat_test = matrix(ncol=15, nrow=nrow(X_test))
 best_voxel_mse = -1
 best_voxel_betahat = -1
+best_voxel_num = 1
+best_voxel_y_hat = c()
 for (voxel in 1:15) {
   fit=glmnet(X_train,y_train[,voxel])
   y_test_hat=predict(fit, X_test)
@@ -75,10 +82,13 @@ for (voxel in 1:15) {
   betahat=coef(fit,s=best_mse_lambda)
   
   y_hat[, voxel] = predict(fit, val_feat, s=best_mse_lambda)
+  y_hat_test[, voxel] = predict(fit, X_test, s=best_mse_lambda)
   
   if (best_voxel_mse == -1 || best_voxel_mse > min_mse) {
     best_voxel_mse = min_mse
     best_voxel_betahat = betahat
+    best_voxel_num = voxel
+    #best_voxel_y_hat = predict(fit, X_test, s=best_mse_lambda)
   }
 }
 feat_sds = apply(X_train, 2, sd)
@@ -100,4 +110,25 @@ text(feat_importance, labels=1:10921, cex= 0.7, pos=3)
 
 ```
 
+```{r}
+
+diff = y_test[,best_voxel_num] - y_hat_test[,best_voxel_num]
+sorted_diff = sort(diff, decreasing=F, index.return=T)
+overshoots = sorted_diff$ix[1:10]
+comp = (1:1750)[-sample]
+
+for (i in 1:10) {
+  image(t(matrix(stim[comp[overshoots[i]],], nrow = 128)[128:1,]) + t(matrix(Re(wav.pyr[,topN[1]]), nrow = 128)[128:1,]),col = grey.colors(100))
+}
+
+```
+
+
+```{r}
+bestFeature = topN[1]
+plot(X[,bestFeature], y[,best_voxel_num])
+plot(X[,7], y[,best_voxel_num])
+cor.test(X[,bestFeature], y[,best_voxel_num], method = "spearman")
+cor.test(X[,bestFeature], y[,best_voxel_num], method = "pearson")
+```
 
