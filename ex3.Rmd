@@ -1,0 +1,101 @@
+---
+title: "Ex 3"
+author: "Paz Bunis & Tal Aviel"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r}
+install.packages('glmnet')
+```
+
+```{r}
+library('glmnet')
+```
+
+```{r}
+# Prepare feature attributes:
+
+# generates the feature attributes vector.
+# Orientation -> featAtt[1,] (1 vertical, 5 horizontal)  
+# Pyramid level -> featAtt[2,] (How big is the feature)
+# Vertical location -> featAtt[3,]  (vert/horz might be confused)
+# Horizontal location -> featAtt[4,] 
+
+featAtt = function(){
+    # featAttVec: row1 - orientation, row2 - pyr-level, row3 - locationx, row4 - locationy
+    pyr  = c(1,8,4*8,16*8,64*8,256*8,1024*8)
+    lens = c(0,1,2,   4,   8,   16,    32,  64)
+    featAttVec = matrix(0,nr=4,nc=sum(pyr))
+    featAttVec[1,] = (0:(sum(pyr)-1)) %% 8
+    cumsumpyr = cumsum(pyr)
+    featAttVec[2,1] = 1;
+    featAttVec[3:4,1] = 0;
+    for (i in 1:(length(cumsumpyr)-1)) {
+        k = 0
+        for (j in seq((cumsumpyr[i]+1),cumsumpyr[i+1],8)) {
+            featAttVec[2,j:(j+7)] = i+1
+            featAttVec[3,j:(j+7)] = floor(k/(lens[i+1])) + 1
+            featAttVec[4,j:(j+7)] = (k%%(lens[i+1])) + 1
+            k = k + 1
+        }
+    }
+    return(featAttVec)
+}
+```
+
+```{r}
+data_sets = load("fMRIclass.RData")
+X=fit_feat
+y=fit_data
+
+set.seed(101)
+sample <- sample.int(n = nrow(X), size = floor(.75*nrow(X)), replace = F)
+X_train <- X[sample, ]
+X_test  <- X[-sample, ]
+y_train <- y[sample, ]
+y_test  <- y[-sample, ]
+```
+
+```{r}
+y_hat = matrix(ncol=15, nrow=nrow(val_feat))
+best_voxel_mse = -1
+best_voxel_betahat = -1
+for (voxel in 1:15) {
+  fit=glmnet(X_train,y_train[,voxel])
+  
+  y_test_hat=predict(fit, X_test)
+  
+  mse_per_lambda=colMeans((y_test_hat-y_test[,voxel])^2)
+  
+  min_mse = min(mse_per_lambda)
+  best_mse_lambda=fit$lambda[which.min(mse_per_lambda)]
+  
+  betahat=coef(fit,s=best_mse_lambda)
+  
+  y_hat[, voxel] = predict(fit, val_feat, s=best_mse_lambda)
+  
+  if (best_voxel_mse == -1 || best_voxel_mse > min_mse) {
+    best_voxel_mse = min_mse
+    best_voxel_betahat = betahat
+  }
+}
+feat_sds = apply(X_train, 2, sd)
+feat_importance = apply(X_train, 2, sd) * abs(best_voxel_betahat[-1])
+sorted = sort(feat_importance, decreasing=T, index.return=T)
+N=10
+topN = sorted$ix[1:N]
+
+sss = matrix(0,nrow = 128, ncol = 128)
+for (i in 1:N) {
+  sss = sss + t(matrix(Re(wav.pyr[,topN[i]]), nrow = 128)[128:1,]);
+}
+  image(sss,col = grey.colors(100))
+
+plot(feat_importance)
+text(feat_importance, labels=1:10921, cex= 0.7, pos=3)
+
+```
+
+
