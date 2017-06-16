@@ -59,6 +59,7 @@ y_test  <- y[-sample, ]
 ```
 
 ```{r}
+
 y_hat = matrix(ncol=15, nrow=nrow(val_feat))
 best_voxel_mse = -1
 best_voxel_betahat = -1
@@ -86,11 +87,13 @@ sorted = sort(feat_importance, decreasing=T, index.return=T)
 N=10
 topN = sorted$ix[1:N]
 
-sss = matrix(0,nrow = 128, ncol = 128)
+load('wavpyr.RData')
+
+important_feats = matrix(0,nrow = 128, ncol = 128)
 for (i in 1:N) {
-  sss = sss + t(matrix(Re(wav.pyr[,topN[i]]), nrow = 128)[128:1,]);
+  important_feats = important_feats + t(matrix(Re(wav.pyr[,topN[i]]), nrow = 128)[128:1,]);
 }
-  image(sss,col = grey.colors(100))
+image(important_feats,col = grey.colors(100))
 
 plot(feat_importance)
 text(feat_importance, labels=1:10921, cex= 0.7, pos=3)
