@@ -1,5 +1,5 @@
 ---
-title: "Ex 3"
+title: "Ex 3 - fMRI Data"
 author: "Paz Bunis & Tal Aviel"
 output:
   html_notebook: default
@@ -8,12 +8,10 @@ output:
 
 ```{r}
 install.packages('glmnet')
-install.packages('Hmisc')
 ```
 
 ```{r}
 library('glmnet')
-library('Hmisc')
 load('wavpyr.RData')
 load('stim.RData')
 ```
@@ -49,6 +47,7 @@ featAtt = function(){
 }
 ```
 
+## Preparing the Data Sets
 ```{r}
 data_sets = load("fMRIclass.RData")
 X=fit_feat
@@ -62,9 +61,9 @@ y_train <- y[sample, ]
 y_test  <- y[-sample, ]
 ```
 
+## 1 Training Prediction Models
 ```{r}
-
-y_hat = matrix(ncol=15, nrow=nrow(val_feat))
+y_hat = matrix(ncol=15, nrow=nrow(val_feat)) # dataset with unknown labels - need to hand in
 y_hat_test = matrix(ncol=15, nrow=nrow(X_test))
 best_voxel_mse = -1
 best_voxel_betahat = -1
@@ -72,9 +71,9 @@ best_voxel_num = 1
 best_voxel_y_hat = c()
 for (voxel in 1:15) {
   fit=glmnet(X_train,y_train[,voxel])
-  y_test_hat=predict(fit, X_test)
+  y_test_hat_all_lambdas=predict(fit, X_test)
   
-  mse_per_lambda=colMeans((y_test_hat-y_test[,voxel])^2)
+  mse_per_lambda=colMeans((y_test_hat_all_lambdas-y_test[,voxel])^2)
   
   min_mse = min(mse_per_lambda)
   best_mse_lambda=fit$lambda[which.min(mse_per_lambda)]
@@ -91,29 +90,56 @@ for (voxel in 1:15) {
     #best_voxel_y_hat = predict(fit, X_test, s=best_mse_lambda)
   }
 }
+```
+## 2 Analysis of Results
+### 2.1 Best Voxel's Model
+After we found the best model out of the 15 models, we calculate the importance of the model's features. 
+The importance of feature $i$ is defined as $|\hat{\beta}_i|\cdot\text{sd}(X_i)$.
+```{r}
 feat_sds = apply(X_train, 2, sd)
 feat_importance = apply(X_train, 2, sd) * abs(best_voxel_betahat[-1])
 sorted = sort(feat_importance, decreasing=T, index.return=T)
 N=10
 topN = sorted$ix[1:N]
 
-load('wavpyr.RData')
+plot(feat_importance, xlab = "Feature Index", ylab = "importance", main = "Feature Importance")
+text(feat_importance, labels=1:10921, cex= 0.7, pos=2)
+```
 
-important_feats = matrix(0,nrow = 128, ncol = 128)
+We can now look at the model's top $10$ most important features (wavelet filters) combined as one image:  
+```{r}
+important_feats_img = matrix(0,nrow = 128, ncol = 128)
 for (i in 1:N) {
-  important_feats = important_feats + t(matrix(Re(wav.pyr[,topN[i]]), nrow = 128)[128:1,]);
+  important_feats_img = important_feats_img + t(matrix(Re(wav.pyr[,topN[i]]), nrow = 128)[128:1,]);
 }
-image(important_feats,col = grey.colors(100))
+image(important_feats_img, col = grey.colors(100), main = "The 10 Most Important Wavelet Filters")
+```
+### 2.2 Best Feature
+In order to understand the relationship between the best feature and the response, we plot the feature's value and the response for all 1750 samples, in addition to a locally weighted scatterplot smoothing line (red). 
+```{r}
+bestFeature = topN[1]
+plot(X[,bestFeature], y[,best_voxel_num], xlab = "Feature Value", ylab = "Response")
+lines(loess.smooth(X[,bestFeature], y[,best_voxel_num]), col="red", lty=2, lwd=2)
+```
+As we can see...
 
-plot(feat_importance)
-text(feat_importance, labels=1:10921, cex= 0.7, pos=3)
+
+```{r}
+plot(X[,7], y[,best_voxel_num])
 
 ```
 
 ```{r}
+cor.test(X[,bestFeature], y[,best_voxel_num], method = "spearman")
+cor.test(X[,bestFeature], y[,best_voxel_num], method = "pearson")
 
+```
+
+### 2.3 Overshoot and Undershoot
+
+```{r}
 diff = y_test[,best_voxel_num] - y_hat_test[,best_voxel_num]
-sorted_diff = sort(diff, decreasing=F, index.return=T)
+sorted_diff = sort(diff, decreasing=T, index.return=T)
 overshoots = sorted_diff$ix[1:10]
 comp = (1:1750)[-sample]
 
@@ -123,12 +149,4 @@ for (i in 1:10) {
 
 ```
 
-
-```{r}
-bestFeature = topN[1]
-plot(X[,bestFeature], y[,best_voxel_num])
-plot(X[,7], y[,best_voxel_num])
-cor.test(X[,bestFeature], y[,best_voxel_num], method = "spearman")
-cor.test(X[,bestFeature], y[,best_voxel_num], method = "pearson")
-```
-
+### 2.4 
