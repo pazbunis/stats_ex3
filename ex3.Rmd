@@ -15,38 +15,6 @@ library('glmnet')
 load('wavpyr.RData')
 load('stim.RData')
 ```
-
-```{r}
-# Prepare feature attributes:
-
-# generates the feature attributes vector.
-# Orientation -> featAtt[1,] (1 vertical, 5 horizontal)  
-# Pyramid level -> featAtt[2,] (How big is the feature)
-# Vertical location -> featAtt[3,]  (vert/horz might be confused)
-# Horizontal location -> featAtt[4,] 
-
-featAtt = function(){
-    # featAttVec: row1 - orientation, row2 - pyr-level, row3 - locationx, row4 - locationy
-    pyr  = c(1,8,4*8,16*8,64*8,256*8,1024*8)
-    lens = c(0,1,2,   4,   8,   16,    32,  64)
-    featAttVec = matrix(0,nr=4,nc=sum(pyr))
-    featAttVec[1,] = (0:(sum(pyr)-1)) %% 8
-    cumsumpyr = cumsum(pyr)
-    featAttVec[2,1] = 1;
-    featAttVec[3:4,1] = 0;
-    for (i in 1:(length(cumsumpyr)-1)) {
-        k = 0
-        for (j in seq((cumsumpyr[i]+1),cumsumpyr[i+1],8)) {
-            featAttVec[2,j:(j+7)] = i+1
-            featAttVec[3,j:(j+7)] = floor(k/(lens[i+1])) + 1
-            featAttVec[4,j:(j+7)] = (k%%(lens[i+1])) + 1
-            k = k + 1
-        }
-    }
-    return(featAttVec)
-}
-```
-
 ## Preparing the Data Sets
 ```{r}
 data_sets = load("fMRIclass.RData")
@@ -68,7 +36,7 @@ y_hat_test = matrix(ncol=15, nrow=nrow(X_test))
 best_voxel_mse = -1
 best_voxel_betahat = -1
 best_voxel_num = 1
-best_voxel_y_hat = c()
+mses_per_voxel = c()
 for (voxel in 1:15) {
   fit=glmnet(X_train,y_train[,voxel])
   y_test_hat_all_lambdas=predict(fit, X_test)
@@ -76,6 +44,7 @@ for (voxel in 1:15) {
   mse_per_lambda=colMeans((y_test_hat_all_lambdas-y_test[,voxel])^2)
   
   min_mse = min(mse_per_lambda)
+  mses_per_voxel[voxel] = min_mse
   best_mse_lambda=fit$lambda[which.min(mse_per_lambda)]
   
   betahat=coef(fit,s=best_mse_lambda)
@@ -85,9 +54,8 @@ for (voxel in 1:15) {
   
   if (best_voxel_mse == -1 || best_voxel_mse > min_mse) {
     best_voxel_mse = min_mse
-    best_voxel_betahat = betahat
+    best_voxel_betahat = betahat    
     best_voxel_num = voxel
-    #best_voxel_y_hat = predict(fit, X_test, s=best_mse_lambda)
   }
 }
 ```
@@ -114,39 +82,65 @@ for (i in 1:N) {
 }
 image(important_feats_img, col = grey.colors(100), main = "The 10 Most Important Wavelet Filters")
 ```
+It looks like the model focuses on the center-left half of the image, and predicts a response based on the brightness in that area.
+
 ### 2.2 Best Feature
 In order to understand the relationship between the best feature and the response, we plot the feature's value and the response for all 1750 samples, in addition to a locally weighted scatterplot smoothing line (red). 
 ```{r}
 bestFeature = topN[1]
-plot(X[,bestFeature], y[,best_voxel_num], xlab = "Feature Value", ylab = "Response")
+plot(X[,bestFeature], y[,best_voxel_num], main = "Best Feature Value and Response Relation", xlab = "Feature Value", ylab = "Response")
 lines(loess.smooth(X[,bestFeature], y[,best_voxel_num]), col="red", lty=2, lwd=2)
 ```
-As we can see...
-
-
-```{r}
-plot(X[,7], y[,best_voxel_num])
-
-```
+As we can see, it looks like there is some type of correlation between the feature value and the response, but it isn't necesarrily a linear relation.
+Below we present the same plot, but use a random feature (instead of the best feature), and see that there is no correlation between its value and the response.
 
 ```{r}
-cor.test(X[,bestFeature], y[,best_voxel_num], method = "spearman")
-cor.test(X[,bestFeature], y[,best_voxel_num], method = "pearson")
-
+plot(X[,7], y[,best_voxel_num], main = "Random Feature Value and Response Relation", xlab = "Feature Value", ylab = "Response")
 ```
+In order to evaluate the correlation between the best feature's value and the response, we compute the Spearman and Pearson correlation coefficients:
+```{r}
+print(cor.test(X[,bestFeature], y[,best_voxel_num], method = "spearman"))
+print(cor.test(X[,bestFeature], y[,best_voxel_num], method = "pearson"))
+```
+These coefficients and low p-values suggest that there exists a positive correlation.
 
 ### 2.3 Overshoot and Undershoot
 
 ```{r}
 diff = y_test[,best_voxel_num] - y_hat_test[,best_voxel_num]
-sorted_diff = sort(diff, decreasing=T, index.return=T)
-overshoots = sorted_diff$ix[1:10]
-comp = (1:1750)[-sample]
+sorted_diff = sort(diff, decreasing=F, index.return=T)
+test_idx_map = (1:1750)[-sample]
+```
 
+In the following images we see the highest overshoot effect:
+
+```{r}
+overshoots = sorted_diff$ix[1:10]
 for (i in 1:10) {
-  image(t(matrix(stim[comp[overshoots[i]],], nrow = 128)[128:1,]) + t(matrix(Re(wav.pyr[,topN[1]]), nrow = 128)[128:1,]),col = grey.colors(100))
+  image(t(matrix(stim[test_idx_map[overshoots[i]],], nrow = 128)[128:1,]) + t(matrix(Re(wav.pyr[,topN[1]]), nrow = 128)[128:1,]),col = grey.colors(100))
 }
 
 ```
+In these cases there are light areas, and areas in which there is an egde in a specific orientation.
 
-### 2.4 
+
+In the following images we see the highest undershoot effect:
+
+```{r}
+l = length(sorted_diff$x)
+undershoots = rev(sorted_diff$ix[(l-10):l])
+for (i in 1:10) {
+  image(t(matrix(stim[test_idx_map[undershoots[i]],], nrow = 128)[128:1,]) + t(matrix(Re(wav.pyr[,topN[1]]), nrow = 128)[128:1,]),col = grey.colors(100))
+}
+
+```
+In these cases there are dark areas, and areas in which there is an egde in the opposite orientation of the feature.
+
+## 2.4 Changes in the Prediction Model
+In section 2.2 we see that the relation between the values of the best feature and the responses isn't necessarily linear. This suggested that if we would have applied a transformation on the feature values, the linear model might have performed better. 
+
+
+## 3 Predictions
+```{r}
+save(mses_per_voxel, y_hat, file="predictions")
+```
